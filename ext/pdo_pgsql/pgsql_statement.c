@@ -742,11 +742,14 @@ static int pgsql_stmt_get_col(pdo_stmt_t *stmt, int colno, zval *result, enum pd
 	}
 
 	/* We have already increased count by 1 in pgsql_stmt_fetch() */
-	if (PQgetisnull(S->result, S->current_row - 1, colno)) { /* Check if we got NULL */
+	int row = S->current_row - 1;
+	size_t len = PQgetlength(S->result, row, colno);
+
+	/* NULL values have a length of 0, so only empty values need the extra check */
+	if (len == 0 && PQgetisnull(S->result, row, colno)) {
 		ZVAL_NULL(result);
 	} else {
-		char *ptr = PQgetvalue(S->result, S->current_row - 1, colno);
-		size_t len = PQgetlength(S->result, S->current_row - 1, colno);
+		char *ptr = PQgetvalue(S->result, row, colno);
 
 		switch (S->cols[colno].pgsql_type) {
 			case BOOLOID:
@@ -771,11 +774,11 @@ static int pgsql_stmt_get_col(pdo_stmt_t *stmt, int colno, zval *result, enum pd
 			}
 			case FLOAT4OID:
 			case FLOAT8OID:
-                if (strncmp(ptr, "Infinity", len) == 0) {
+                if (len == strlen("Infinity") && memcmp(ptr, "Infinity", len) == 0) {
                     ZVAL_DOUBLE(result, ZEND_INFINITY);
-                } else if (strncmp(ptr, "-Infinity", len) == 0) {
+                } else if (len == strlen("-Infinity") && memcmp(ptr, "-Infinity", len) == 0) {
                     ZVAL_DOUBLE(result, -ZEND_INFINITY);
-                } else if (strncmp(ptr, "NaN", len) == 0) {
+                } else if (len == strlen("NaN") && memcmp(ptr, "NaN", len) == 0) {
                     ZVAL_DOUBLE(result, ZEND_NAN);
                 } else {
                     ZVAL_DOUBLE(result, zend_strtod(ptr, NULL));
